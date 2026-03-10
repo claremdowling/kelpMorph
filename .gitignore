@@ -1,0 +1,6 @@
+#names of files and file extentions you want git to ignore (AKA big files)
+
+*.bam
+log/
+logs/
+data/
