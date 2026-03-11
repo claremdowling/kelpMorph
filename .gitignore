@@ -1,5 +1,6 @@
 #names of files and file extentions you want git to ignore (AKA big files)
 
+*.fasta
 *.bam
 log/
 logs/
