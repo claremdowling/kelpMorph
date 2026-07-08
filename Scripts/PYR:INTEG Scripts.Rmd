@@ -1,0 +1,628 @@
+---
+title: "KelpMorph"
+author: "Meaghan Clark and Clare Dowling"
+date: "2026-03-10"
+output: html_document
+---
+
+```{r setup0, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Summary
+Project goals: 
+
+
+## Directory structure
+
+```
+ProjectName/
+├── data/
+│   ├── raw/          # symbolic links to raw sequencing data
+│   ├── processed/    # trimmed, filtered, aligned data
+│   └── reference/    # symbolic link to reference genome
+├── scripts/
+│   ├── 0. 
+│   ├── 1. 
+│   ├── 2. 
+│   ├── 3. 
+│   ├── 4. 
+│   ├── 5. 
+│   ├── 6. 
+│   └── 7. 
+├── analyses/
+│   ├── 
+│   └── 
+├── logs
+└── MpyrAdapt_notebook.md
+```
+
+
+
+## Metadata
+
+
+
+## Raw data processing 
+
+#### Download data from SeqTech
+Downloaded via Globus link to `/data/rufus/pinsky_lab/integrifolia_longread`
+
+#### Set up project repository 
+- connect to github 
+- set up ssh key using [Roy's instructions](https://drive.google.com/file/d/1kTFdCWKR8oDjYI-6_U3LvW1F5E8V3UVU/view)
+- create symbolic links to data and reference genome 
+
+```{bash, eval = FALSE}
+
+ln -s /hb/groups/mpinsky_lab/Mpyr_ref_2025/hap1/Mpyr-NLJ1B.v3.hap1.softmasked.fasta /home/miclark/kelpMorphMIC/data/reference/Mpyr-NLJ1B.v3.hap1.softmasked.fasta
+
+ln -s /data/rufus/pinsky_lab/Mpyr/integrifolia_longread/02_18_26_R1041_LIG_KELP_SWCV0002_1_dorado1.4.0_supv5.2.0_5mCG_5hmCG.bam /home/miclark/kelpMorphMIC/data/raw/Mpyr_int_SWCV_0002.bam
+
+ln -s /data/rufus/pinsky_lab/Mpyr/integrifolia_longread/03_02_26_R1041_LIG_KELP_SWCV0001_1_dorado1.4.0_supv5.2.0_5mCG_5hmCG.bam /home/miclark/kelpMorphMIC/data/raw/Mpyr_int_SWCV_0001.bam
+
+# forgot about pyrifera data! 
+ln -s /data/rufus/pinsky_lab/Mpyr/kelp_longread/basecalled/08_05_25_R1041_LIG_KELP_MultiC_SWCV06_drd1.0.0_supv5.2.0.bam /home/miclark/kelpMorphMIC/data/raw/Mpyr_pyr_SWCV_06.bam
+
+ln -s /data/rufus/pinsky_lab/Mpyr/kelp_longread/basecalled/08_05_25_R1041_LIG_KELP_MultiC_SWCV10_drd1.0.0_supv5.2.0.bam /home/miclark/kelpMorphMIC/data/raw/Mpyr_pyr_SWCV_10.bam
+
+ln -s /data/rufus/pinsky_lab/Mpyr/kelp_longread/basecalled/08_05_25_R1041_LIG_KELP_MultiD_SWCV51_drd1.0.0_supv5.2.0.bam /home/miclark/kelpMorphMIC/data/raw/Mpyr_pyr_SWCV_51.bam
+
+ln -s /data/rufus/pinsky_lab/Mpyr/kelp_longread/basecalled/08_05_25_R1041_LIG_KELP_MultiD_SWCV53_drd1.0.0_supv5.2.0.bam /home/miclark/kelpMorphMIC/data/raw/Mpyr_pyr_SWCV_53.bam
+
+
+gunzip -c /data/rufus/pinsky_lab/Mpyr/integrifolia_longread/02_18_26_R1041_LIG_KELP_SWCV0002_1_dorado1.4.0_supv5.2.0_5mCG_5hmCG_summary.txt.gz >  /home/miclark/kelpMorphMIC/data/raw/Mpyr_SWCV_0002_summary.txt
+
+gunzip -c /data/rufus/pinsky_lab/Mpyr/integrifolia_longread/03_02_26_R1041_LIG_KELP_SWCV0001_1_dorado1.4.0_supv5.2.0_5mCG_5hmCG_summary.txt.gz > /home/miclark/kelpMorphMIC/data/raw/Mpyr_SWCV_0001_summary.txt
+
+```
+
+#### Assess sequencing data with NanoPlot
+
+Install [Nanoplot](https://github.com/wdecoster/NanoPlot) in conda environment
+```{bash, eval = FALSE}
+
+# load required modules
+module load miniconda3
+
+# create a new conda environment to install nanoplot
+conda create -n nanoplot
+
+# activate the environment
+conda activate nanoplot
+
+# install nanoplot with conda
+conda install -c bioconda nanoplot
+
+# verify installation
+NanoPlot --version
+
+# deactivate conda environment
+conda deactivate
+
+```
+
+WRAPPER: wrapper-run_nanoplot.sh 
+```{bash, eval = FALSE}
+
+#!/bin/bash
+
+# wrapper-run_nanoplot.sh 
+# This script starts an array job to run nanoplot on unaligned bam files
+# Last updated 03/11/2026 by MI Clark
+
+# define high level variables
+date=$(date +%m%d%Y)
+echo running on $date 
+jobname=nanoplot
+
+#define dirs:
+indir="/home/miclark/kelpMorphMIC/data/raw" # name of directory with the alignments to run qualimap on
+outdir="/home/miclark/kelpMorphMIC/data/raw/nanoplot" # name of directory where qualimap reports can live
+logfilesdir="/home/miclark/kelpMorphMIC/logs/nanoplot" #name of directory to create and then write log files to
+
+#check if directories have been created; if not, make 
+if [ ! -d $logfilesdir ]; then mkdir $logfilesdir; fi
+if [ ! -d $outdir ]; then mkdir $outdir; fi
+
+# make alignment key
+# this file should be a list of sample names
+# e.g., 
+# ind1	ind2    ind3    ind4
+array_key="/home/miclark/kelpMorphMIC/scripts/nanoplot_key.txt"
+
+SAMPLE_LIST=()
+while IFS= read -r line; do
+    SAMPLE_LIST+=("$line")
+done < <(find "${indir}" -maxdepth 1 -name "*.bam" | xargs -n1 basename | sed 's/\.bam$//' | sort)
+printf '%s\n' "${SAMPLE_LIST[@]}" > $array_key
+
+echo "Found ${#SAMPLE_LIST[@]} samples"
+
+# define slurm job details
+cpus=1 #number of CPUs to request/use per dataset
+ram_per_cpu=25G #amount of RAM to request/use per CPU CHANGE
+array_no=$(cat $array_key | wc -l) # number of array jobs to run 
+
+# define executable and reference genome 
+executable=/home/miclark/kelpMorphMIC/scripts/run_nanoplot.sbatch #script to run 
+
+#---------------------------------------------------------
+
+#submit job to cluster
+sbatch --job-name=$jobname \
+	--array=1-$array_no%6 \
+	--export=ARRAY_KEY=$array_key,CPUS=$cpus,INDIR=$indir,OUTDIR=$outdir,LOGFILESDIR=$logfilesdir \
+	--cpus-per-task=$cpus \
+	--mem-per-cpu=$ram_per_cpu \
+	--output=$logfilesdir/${jobname}_${date}_%A-%a.out \
+	--error=$logfilesdir/${jobname}_${date}_%A-%a.err \
+	--time=4:00:00 \
+    --partition=lab-mpinsky \
+    --qos=pi-mpinsky \
+    --account=pi-mpinsky \
+	$executable
+		
+echo submitted $array_no jobs to run nanoplot on bams in $indir
+
+echo ----------------------------------------------------------------------------------------
+echo My executable is $executable		
+```
+
+EXECUTABLE: run_nanoplot.sbatch
+```{bash, eval = FALSE}
+#!/bin/bash
+
+############# run_nanoplot.sbatch  ###################
+# Run nanoplot on unaligned ONT bams to generate quality assessment plots
+
+# load required modules 
+module load miniconda3
+
+# activate conda environemnt 
+conda activate nanoplot
+
+# read array key and set variables
+SAMPLE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" $ARRAY_KEY)
+BAM="${INDIR}/${SAMPLE}.bam"
+SAMPLEDIR="${OUTDIR}/${SAMPLE}"
+
+if [ ! -d $SAMPLEDIR ]; then mkdir $SAMPLEDIR; fi
+
+# run NanoPlot
+NanoPlot -t ${CPUS} --ubam ${BAM} --plots dot -o ${SAMPLEDIR}
+
+echo "Done with ${SAMPLE}"
+
+# END SCRIPT
+
+```
+
+- What is a reasonable Phred-score cut-off? Q10? 
+
+##### Results interpretation
+It looks like we have many long reads, but they have low quality. I talked to Sam Bogan about if we should keep them to help SV calling, or drop them. 
+
+---
+For SV calling, they probably won’t make an impact because you’ll use a coverage threshold. It’s not like you have >1x coverage where those reads map and a variant near the length of those reads
+I’d probably do my alignments with them filtered out and not filtered out, look at where the long reads align in [IGV](https://igv.org), and decide whether they’re interesting. If that’s too much work, I’d let them filter out during quality filtering
+---
+
+#### Quality filter data with Chopper and align with minimap2
+
+Install [Chopper](https://github.com/wdecoster/chopper), samtools, and minimap2 in conda environment
+```{bash, eval = FALSE}
+
+# load required modules
+module load miniconda3
+
+# create a new conda environment to install Chopper
+conda create -n chopper
+
+# activate the environment
+conda activate chopper
+
+# install chopper with conda
+conda install -c bioconda chopper samtools minimap2 
+
+# verify installation
+chopper --version # 0.11.0
+minimap2 --version # 2.30-r1287
+samtools --version # 1.23
+
+# deactivate conda environment
+conda deactivate
+
+```
+
+WRAPPER: wrapper-filter_align.sh
+```{bash, eval = FALSE}
+
+#!/bin/bash
+
+# wrapper-filter_align.sh
+# This script starts an array job to filter and align ONT reads in unaligned bam files
+# Last updated 03/11/2026 by MI Clark
+
+# define high level variables
+date=$(date +%m%d%Y)
+echo running on $date 
+jobname=flt_align
+
+#define dirs:
+### CHANGE WHEN RUNNING IN NEW DIRECTORY ### 
+homedir="/home/miclark/kelpMorphMIC" # home directory for project
+scratchdir="/hb/scratch/miclark/kelpMorphMIC" # name of directory to use for temporary files during filtering and alignment
+### 
+
+indir="${homedir}/data/raw" # name of directory with unaligned bam files
+logfilesdir="${homedir}/logs/flt_align" #name of directory to create and then write log files to
+outdir="${scratchdir}/alignments" # name of directory where alignments can live 
+
+#check if directories have been created; if not, make 
+if [ ! -d $logfilesdir ]; then mkdir $logfilesdir; fi
+if [ ! -d $scratchdir ]; then mkdir $scratchdir; fi
+if [ ! -d $outdir ]; then mkdir $outdir; fi
+
+# make array key
+# this file should be a list of sample names
+# e.g., 
+# ind1	ind2    ind3    ind4
+array_key="${homedir}/scripts/flt_align_key.txt"
+
+# find list of files with .bam extention in the input directory, remove the extention and file path, and write a list of sample names to the array key
+SAMPLE_LIST=()
+while IFS= read -r line; do
+    SAMPLE_LIST+=("$line")
+done < <(find "${indir}" -maxdepth 1 -name "*.bam" | xargs -n1 basename | sed 's/\.bam$//' | sort)
+printf '%s\n' "${SAMPLE_LIST[@]}" > $array_key
+
+echo "Found ${#SAMPLE_LIST[@]} samples"
+
+# define slurm job details
+cpus=8 #number of CPUs to request/use per dataset
+totalmem=120G #amount of RAM to request/use per CPU CHANGE
+array_no=$(cat $array_key | wc -l) # number of array jobs to run 
+
+# define executable and reference genome 
+executable=${homedir}/scripts/filter_align.sbatch #script to run 
+reference=${homedir}/data/reference/Mpyr-NLJ1B.v3.hap1.softmasked.fasta # reference genome to align to
+
+#---------------------------------------------------------
+
+#submit job to cluster
+sbatch --job-name=$jobname \
+	--array=1-$array_no%2 \
+	--export=ARRAY_KEY=$array_key,CPUS=$cpus,INDIR=$indir,OUTDIR=$outdir,LOGFILESDIR=$logfilesdir,SCRATCHDIR=$scratchdir,REFERENCE=$reference \
+	--cpus-per-task=$cpus \
+	--mem=$totalmem \
+	--output=$logfilesdir/${jobname}_${date}_%A-%a.out \
+	--error=$logfilesdir/${jobname}_${date}_%A-%a.err \
+	--time=24:00:00 \
+    --partition=lab-mpinsky \
+    --qos=pi-mpinsky \
+    --account=pi-mpinsky \
+	$executable
+		
+echo submitted $array_no jobs to filter and align bams in $indir
+
+echo ----------------------------------------------------------------------------------------
+echo My executable is $executable
+
+```
+
+EXECUTABLE: filter_align.sh
+```{bash, eval = FALSE}
+#!/bin/bash
+
+############# filter_align.sbatch  ###################
+# Filter and align ONT bams with chopper and minimap2
+# Last updated 03/12/2026 by MI Clark
+
+# load required modules 
+module load miniconda3
+
+# activate conda environemnt 
+conda activate chopper
+
+# read array key and set variables
+SAMPLE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" $ARRAY_KEY)
+BAM="${INDIR}/${SAMPLE}.bam"
+
+# this following command converts input bams to fastq, filters then with chopper using a 
+# length cut-off of >1000bp and mean quality scores >Q10, and then aligns the filtered reads to the reference genome with minimap2
+samtools fastq ${BAM} | chopper -l 1000 -q 10 | \
+  minimap2 -ax map-ont --MD -t ${CPUS} ${REFERENCE} - | \
+  samtools sort -o ${OUTDIR}/${SAMPLE}_aligned.bam
+
+# index bam file
+samtools index -@ ${CPUS} ${OUTDIR}/${SAMPLE}_aligned.bam
+
+echo "Done with ${SAMPLE}"
+
+# END SCRIPT
+```
+
+#### Assess alignment quality with Qualimap 
+
+Install qualimap in conda environment
+```{bash, eval = FALSE}
+# load conda module
+module load miniconda3
+
+# create a new conda environment to install qualimap
+conda create -n qualimap -c bioconda -c conda-forge qualimap
+
+# activate conda environment
+conda activate qualimap
+
+# verify installation
+qualimap --help
+
+# deactivate conda environment
+conda deactivate
+
+```
+
+WRAPPER: wrapper-run_qualimap.sh
+```{bash, eval = FALSE}
+#!/bin/bash
+
+# wrapper-run_qualimap.sh 
+# This script starts an array job to run qualimap on aligned bam files
+# Last updated 03/12/2026 by MI Clark
+
+# define high level variables
+date=$(date +%m%d%Y)
+echo running on $date 
+jobname=qualimap
+
+#define dirs:
+### CHANGE WHEN RUNNING IN NEW DIRECTORY ### 
+homedir="/home/miclark/kelpMorphMIC" # home directory for project
+### 
+
+indir="${homedir}/Data/Alignments" # name of directory with the alignments to run qualimap on
+outdir="${homedir}/Data/Alignments/QC" # name of directory where qualimap reports can live
+logfilesdir="${homedir}/Logs/qualimap" #name of directory to create and then write log files to
+
+#check if directories have been created; if not, make 
+if [ ! -d $logfilesdir ]; then mkdir $logfilesdir; fi
+if [ ! -d $outdir ]; then mkdir $outdir; fi
+
+# make  key
+# this file should be a list of sample names
+# e.g., 
+# ind1	ind2    ind3    ind4
+array_key="${homedir}/scripts/qualimap_key.txt"
+
+SAMPLE_LIST=()
+while IFS= read -r line; do
+    SAMPLE_LIST+=("$line")
+done < <(find "${indir}" -maxdepth 1 -name "*.bam" | xargs -n1 basename | sed 's/\.bam$//' | sort)
+printf '%s\n' "${SAMPLE_LIST[@]}" > $array_key
+
+echo "Found ${#SAMPLE_LIST[@]} samples"
+
+# define slurm job details
+cpus=1 #number of CPUs to request/use per dataset
+ram_per_cpu=16G #amount of RAM to request/use per CPU CHANGE
+array_no=$(cat $array_key | wc -l) # number of array jobs to run 
+
+# define executable and reference genome 
+executable=${homedir}/scripts/run_qualimap.sbatch #script to run 
+
+#---------------------------------------------------------
+
+#submit job to cluster
+sbatch --job-name=$jobname \
+	--array=1-$array_no%25 \
+	--export=ARRAY_KEY=$array_key,CPUS=$cpus,INDIR=$indir,OUTDIR=$outdir,LOGFILESDIR=$logfilesdir \
+	--cpus-per-task=$cpus \
+	--mem-per-cpu=$ram_per_cpu \
+	--output=$logfilesdir/${jobname}_${date}_%A-%a.out \
+	--error=$logfilesdir/${jobname}_${date}_%A-%a.err \
+	--time=4:00:00 \
+    --partition=lab-mpinsky \
+    --qos=pi-mpinsky \
+    --account=pi-mpinsky \
+	$executable
+		
+echo submitted $array_no jobs to run qualimap on bams in $indir
+
+echo ----------------------------------------------------------------------------------------
+echo My executable is $executable		
+
+
+```
+
+EXECUTABLE: run_qualimap.sbatch
+```{bash, eval = FALSE}
+
+#!/bin/bash
+
+# run_qualimap.sbatch
+# This script uses qualimap to generate alignment statistics for a given sample.
+# Last updated 03/02/2026 by MI Clark
+
+#--------------- EXECUTABLE ---------------
+
+# Input: Reference genome path, forward and reverse reads from wrapper-align_to_genome.sh 
+#
+# Output: ${SAMPLE_NAME}.bam file, forward and reverse reads aligned to reference genome and trimmed
+
+# activate conda environment
+module load miniconda3
+conda activate qualimap
+
+SAMPLE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" $ARRAY_KEY)
+BAM="${INDIR}/${SAMPLE}.bam"
+SAMPLEDIR="${OUTDIR}/${SAMPLE}"
+# run qualimap 
+
+# java-mem-size should be ~75% of requested RAM
+qualimap bamqc \
+    -bam "${BAM}" \
+    -outdir "${SAMPLEDIR}" \
+    -outformat HTML \
+    --java-mem-size=12G \
+    -nt "${SLURM_CPUS_PER_TASK}" \
+    --cov-hist-lim 2000 \
+    --collect-overlap-pairs \
+    --paint-chromosome-limits
+
+echo "Done with ${SAMPLE}"
+
+## END SCRIPT
+ 
+```
+
+
+#### Call SVs with sniffles2
+
+We will call SVs with sniffles2. Sniffles2 is not good at calling SVs in repetitive regions of the genome, and will sometimes split large variants into smaller false positives in repetitive regions.
+To avoid this, we will provide Sniffles2 with a tandem-repeat mask for the reference genome. A tandem repeat is a sequence of DNA that is repeated multiple times in a row. 
+We will use Tandem Repeats Finder (TRF) to identify tandem repeats in the reference genome, and then use the output to create a mask for Sniffles2.
+
+```{bash, eval = FALSE}
+# TRF is already installed as a module on Elkhorn. 
+
+# It is loaded as follows: 
+module load trf/4.09.1
+
+# run TRF
+# recommended parameters: 
+ trf yoursequence.txt 2 7 7 80 10 50 500 -f -d -m
+
+# convert to bed file 
+
+# A basic awk parser mapping TRF .dat fields to 0-based BED format
+awk 'BEGIN {OFS="\t"} 
+     /^Sequence:/ {chrom=$2} 
+     /^[0-9]/ {print chrom, $1-1, $2, "TR_" $3}' your_genome.fasta.*.dat > trf_repeats.bed
+
+# sort bed file 
+bedtools sort -i trf_repeats.bed > final_tandem_repeats.bed
+
+```
+
+EXECUTABLE: run_sniffles.sbatch *we will eventually want to re-run this with a tandem-repeat mask*
+```{bash, eval = FALSE}
+
+#!/bin/bash
+#SBATCH --job-name=sniffles
+#SBATCH --output /home/miclark/kelpMorph/logs/sniffles-%j.out
+#SBATCH --error /home/miclark/kelpMorph/logs/sniffles-%j.err
+#SBATCH --cpus-per-task=32
+#SBATCH --time=72:00:00
+#SBATCH --mem=200G 
+#SBATCH --partition=lab-mpinsky
+#SBATCH --qos=pi-mpinsky
+#SBATCH --account=pi-mpinsky
+
+set -euo pipefail
+
+module load sniffles/2.3.2
+
+# CHANGE ME! 
+REFERENCE=/your/path/to/reference.fasta
+OUTDIR=/path/to/output/goes/here
+SAMPLES=(sample1 sample2 sample3 sample4 sample5 sample6)
+# 
+
+TOTAL_CPUS=${SLURM_CPUS_PER_TASK}
+PARALLEL_JOBS=6
+CPUS_PER_SAMPLE=$(( TOTAL_CPUS / PARALLEL_JOBS ))  # CPUs each sniffles instance gets
+
+mkdir -p ${OUTDIR}/snf
+
+# per-sample SNF calling in parallel
+echo "Starting per-sample SNF calling..."
+
+parallel --jobs ${PARALLEL_JOBS} --halt now,fail=1 \
+    sniffles \
+        --input ${OUTDIR}/{}_aligned.bam \
+        --snf ${OUTDIR}/snf/{}.snf \
+        --reference ${REFERENCE} \
+        --threads ${CPUS_PER_SAMPLE} \
+        --sample-id {} \
+    ::: "${SAMPLES[@]}"
+
+# --halt now,fail=1 kills all jobs  if a  sample fails so joint genotyping never runs on incomplete data
+
+# joint genotyping
+echo "Starting joint genotyping..."
+
+sniffles \
+    --input ${OUTDIR}/snf/*.snf \
+    --vcf ${OUTDIR}/kelpMorph_SVs.vcf.gz \
+    --reference ${REFERENCE} \
+    --threads ${TOTAL_CPUS}
+echo "Done."
+
+```
+
+Filtering VCF
+```{bash, eval = FALSE}
+bcftools view -i 'SVLEN<100000 && SVLEN>-100000 && SUPPORT<60' kelpMorph_SVs.vcf.gz | bcftools view -e 'AF=1' > kelpMorph_filtered_SVs.vcf.gz
+
+```
+
+Install NanoComp
+```{bash, eval = FALSE}
+
+module load miniconda3
+
+conda create -n nanocomp -c bioconda nanocomp
+
+conda activate nanocomp
+
+NanoComp -v  # check installation
+
+# start interactive job
+
+salloc --time=24:00:00 --mem=100Gb --ntasks=1 --cpus-per-task=10 --partition=lab-mpinsky \
+        --qos=pi-mpinsky \
+        --account=pi-mpinsky
+
+### script
+#!/bin/bash
+#SBATCH --job-name=nanocomp
+#SBATCH --output /home/cmdowlin/kelpMorph/Logs/nanocomp-%j.out
+#SBATCH --error /home/cmdowlin/kelpMorph/Logs/nanocomp-%j.err
+#SBATCH --cpus-per-task=32
+#SBATCH --time=72:00:00
+#SBATCH --mem=200G 
+#SBATCH --partition=lab-mpinsky
+#SBATCH --qos=pi-mpinsky
+#SBATCH --account=pi-mpinsky
+
+conda activate nanocomp
+
+INDIR="/home/cmdowlin/kelpMorph/Data/Alignments/"
+OUTDIR="/home/cmdowlin/kelpMorph/Data/Alignments/nanocomp_bam"
+
+if [ ! -d $OUTDIR ]; then mkdir $OUTDIR; fi
+
+NanoComp --bam ${INDIR}/SWCVinteg001_aligned.bam \
+    --bam ${INDIR}/SWCinteg002_aligned.bam \
+    --bam ${INDIR}/SWCpyr006_aligned.bam \
+    --bam ${INDIR}/SWCpyr010_aligned.bam \
+    --bam ${INDIR}/SWCpyr051_aligned.bam \
+    --bam ${INDIR}/SWCpyr053_aligned.bam \
+    --threads 32 \
+    -o ${OUTDIR}
+
+
+salloc --time=24:00:00 --mem=100Gb --ntasks=1 --cpus-per-task=1 --partition=lab-mpinsky \
+        --qos=pi-mpinsky \
+        --account=pi-mpinsky
+
+conda activate sniffles2plot
+
+python3 -m sniffles2_plot -i /hb/groups/mpinsky_lab/temp_Clare/kelpMorph_filtered_SVs.vcf.gz -o <output_folder>
+
+
+
+
+```
