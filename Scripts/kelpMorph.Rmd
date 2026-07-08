@@ -34,9 +34,9 @@ ln -s /data/rufus/pinsky_lab/Mpyr/kelp_longread/basecalled/08_05_25_R1041_LIG_KE
 ```
 
 
-#### Assess sequencing data with NanoPlot
+#### Assess and initial QC sequencing data with NanoPlot
 Install [Nanoplot](https://github.com/wdecoster/NanoPlot) in conda environment
-conda creates a 'bubble' to run annoplot within 
+conda creates a 'bubble' to run nanoplot within 
 ```{bash, eval = FALSE}
 
 #!/bin/bash
@@ -252,6 +252,47 @@ echo "Done with ${SAMPLE}"
 
 # END SCRIPT
 ```
+
+VERSION 2 OF EXECUTABLE: filter_align.sbatch
+```{bash, eval = FALSE}
+#Clare Dowling 7/8/26 
+#Now to see if I can run Filtlong also and slot it in after chopper and before minimap. This si a mix of new script and the script above trying to integrate it.
+
+#open conda
+module load miniconda3
+
+#create filtlong environment (just the first time)
+#conda create -y -n filtlong
+
+#install filtlong (just the first time)
+#conda install bioconda::pbmm2
+
+#activate
+conda activate filtlong
+conda activate chopper
+
+# read array key and set variables
+SAMPLE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" $ARRAY_KEY)
+BAM="${INDIR}/${SAMPLE}.bam"
+
+# this following command converts input bams to fastq, filters then with chopper using a 
+# length cut-off of >1000bp and mean quality scores >Q10, filters again with filtlong, and then aligns the filtered reads to the reference genome with minimap2
+samtools fastq ${BAM} | chopper -l 1000 -q 10 | \ filtlong --min_length 1000 
+--keep_percent 90 --target_bases 500000000 input.fastq.gz | gzip > output.fastq.gz | \
+  minimap2 -ax map-ont --MD -t ${CPUS} ${REFERENCE} - | \
+  samtools sort -o ${OUTDIR}/${SAMPLE}_aligned.bam
+
+# index bam file
+samtools index -@ ${CPUS} ${OUTDIR}/${SAMPLE}_aligned.bam
+
+echo "Done with ${SAMPLE}"
+
+# END SCRIPT
+```
+
+
+
+
 
 #### Assess alignment quality with Qualimap 
 
